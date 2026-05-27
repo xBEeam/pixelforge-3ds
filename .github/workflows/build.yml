@@ -14,15 +14,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Investigate
+      - name: Show example structure
         shell: bash
         run: |
-          echo "=== DEVKITPRO env ==="
-          echo "DEVKITPRO=$DEVKITPRO"
-          echo "DEVKITARM=$DEVKITARM"
-          echo "=== /opt/devkitpro top level ==="
-          ls /opt/devkitpro/ 2>/dev/null || echo "missing"
-          echo "=== libctru ==="
-          ls /opt/devkitpro/libctru/ 2>/dev/null || echo "missing"
-          echo "=== search for 3ds_rules ==="
-          fin
+          echo "=== example 3ds folder ==="
+          ls /opt/devkitpro/examples/3ds/ 2>/dev/null | head -20
+          echo "=== graphics examples ==="
+          ls /opt/devkitpro/examples/3ds/graphics/ 2>/dev/null
+          echo "=== 2d example ==="
+          ls /opt/devkitpro/examples/3ds/graphics/gpu/ 2>/dev/null
+          echo "=== first example Makefile ==="
+          find /opt/devkitpro/examples/3ds -name "Makefile" | head -1 | xargs cat
+          echo "=== 3dsvars.sh content ==="
+          cat /opt/devkitpro/3dsvars.sh
