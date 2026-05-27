@@ -9,7 +9,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     container:
-      image: devkitpro/devkitarm:latest
+      image: devkitpro/devkitarm-rules:latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
