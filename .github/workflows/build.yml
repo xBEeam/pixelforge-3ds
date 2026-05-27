@@ -14,10 +14,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install 3DS libraries
-        run: |
-          dkp-pacman -S --noconfirm 3ds-dev libctru citro2d citro3d
-
       - name: Build
         run: |
           source /etc/profile.d/devkit-env.sh
@@ -29,5 +25,4 @@ jobs:
         with:
           name: pixelforge
           path: |
-            pixelforge.3dsx
-            pixelforge.smdh
+            pixelforge.
