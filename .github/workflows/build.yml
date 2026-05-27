@@ -14,10 +14,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install 3DS libs
+        shell: bash
+        run: |
+          dkp-pacman -Syu --noconfirm
+          dkp-pacman -S --needed --noconfirm libctru citro3d citro2d
+
       - name: Build
         shell: bash
         run: |
           source /etc/profile.d/devkit-env.sh
+          ls /opt/devkitpro/libctru/
           cp $DEVKITPRO/libctru/default_icon.png app.png
           make
 
