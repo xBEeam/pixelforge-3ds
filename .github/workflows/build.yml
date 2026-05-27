@@ -14,24 +14,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install 3DS libs
+      - name: Investigate
         shell: bash
         run: |
-          dkp-pacman -Syu --noconfirm
-          dkp-pacman -S --needed --noconfirm libctru citro3d citro2d
-
-      - name: Build
-        shell: bash
-        run: |
-          source /etc/profile.d/devkit-env.sh
-          ls /opt/devkitpro/libctru/
-          cp $DEVKITPRO/libctru/default_icon.png app.png
-          make
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: pixelforge
-          path: |
-            pixelforge.3dsx
-            pixelforge.smdh
+          echo "=== DEVKITPRO env ==="
+          echo "DEVKITPRO=$DEVKITPRO"
+          echo "DEVKITARM=$DEVKITARM"
+          echo "=== /opt/devkitpro top level ==="
+          ls /opt/devkitpro/ 2>/dev/null || echo "missing"
+          echo "=== libctru ==="
+          ls /opt/devkitpro/libctru/ 2>/dev/null || echo "missing"
+          echo "=== search for 3ds_rules ==="
+          fin
