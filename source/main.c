@@ -31,10 +31,10 @@
 #define CA(r,g,b,a) C2D_Color32(r,g,b,a)
 
 static const u32 PALETTE[PALETTE_SIZE] = {
-    C(0x00,0x00,0x00), C(0x1D,0x2B,0x53), C(0x7E,0x25,0x53), C(0x00,0x87,0x51),
-    C(0xAB,0x52,0x36), C(0x5F,0x57,0x4F), C(0xC2,0xC3,0xC7), C(0xFF,0xF1,0xE8),
-    C(0xFF,0x00,0x4D), C(0xFF,0xA3,0x00), C(0xFF,0xEC,0x27), C(0x00,0xE4,0x36),
-    C(0x29,0xAD,0xFF), C(0x83,0x76,0x9C), C(0xFF,0x77,0xA8), C(0xFF,0xCC,0xAA),
+    0xFF000000, 0xFF532B1D, 0xFF53257E, 0xFF518700,
+    0xFF3652AB, 0xFF4F575F, 0xFFC7C3C2, 0xFFE8F1FF,
+    0xFF4D00FF, 0xFF00A3FF, 0xFF27ECFF, 0xFF36E400,
+    0xFFFFAD29, 0xFF9C7683, 0xFFA877FF, 0xFFAACCFF,
 };
 
 typedef enum {
@@ -147,7 +147,13 @@ static void prev_frame(void){ if(proj.current_frame>0) proj.current_frame--; }
 
 static void draw_line_px(int x0,int y0,int x1,int y1,u8 v){
     int dx=abs(x1-x0),dy=abs(y1-y0),sx=x0<x1?1:-1,sy=y0<y1?1:-1,err=dx-dy,x=x0,y=y0;
-    for(;;){ set_pixel(x,y,v); if(x==x1&&y==y1) break; int e2=2*err; if(e2>-dy){err-=dy;x+=sx;} if(e2<dx){err+=dx;y+=sy;} }
+    for(;;){
+        set_pixel(x,y,v);
+        if(x==x1&&y==y1) break;
+        int e2=2*err;
+        if(e2>-dy){err-=dy;x+=sx;}
+        if(e2<dx){err+=dx;y+=sy;}
+    }
 }
 static void draw_rect_outline(int x0,int y0,int x1,int y1,u8 v){
     int xa=x0<x1?x0:x1,xb=x0<x1?x1:x0,ya=y0<y1?y0:y1,yb=y0<y1?y1:y0;
@@ -155,8 +161,11 @@ static void draw_rect_outline(int x0,int y0,int x1,int y1,u8 v){
     for(int y=ya;y<=yb;y++){set_pixel(xa,y,v);set_pixel(xb,y,v);}
 }
 static void flood_fill(int x,int y,u8 t,u8 r){
-    if(t==r) return; if(get_pixel(x,y)!=t) return;
-    static int sx[CW*CH],sy[CW*CH]; Frame *f=cur_frame(); int sp=0;
+    if(t==r) return;
+    if(get_pixel(x,y)!=t) return;
+    static int sx[CW*CH],sy[CW*CH];
+    Frame *f=cur_frame();
+    int sp=0;
     sx[sp]=x; sy[sp]=y; sp++;
     while(sp>0){
         sp--; int cx=sx[sp],cy=sy[sp];
@@ -183,7 +192,7 @@ static bool save_bmp_sheet(const char *p){
         for(int fi=0;fi<proj.num_frames;fi++){
             for(int x=0;x<CW;x++){
                 u8 i=composite_at(fi,x,y);
-                u32 c=(i==TRANSPARENT)?C(0xFF,0,0xFF):PALETTE[i];
+                u32 c=(i==TRANSPARENT)?0xFFFF00FF:PALETTE[i];
                 fputc((c>>16)&0xFF,f); fputc((c>>8)&0xFF,f); fputc(c&0xFF,f); w+=3;
             }
         }
@@ -427,8 +436,13 @@ static void render_bottom(void){
         if(current_tool==TOOL_LINE){
             int dx=abs(shape_x1-shape_x0),dy=abs(shape_y1-shape_y0);
             int sx=shape_x0<shape_x1?1:-1,sy=shape_y0<shape_y1?1:-1,err=dx-dy,x=shape_x0,y=shape_y0;
-            for(;;){ C2D_DrawRectSolid(CANVAS_X+x*PIXEL_SIZE,CANVAS_Y+y*PIXEL_SIZE,0,PIXEL_SIZE,PIXEL_SIZE,PALETTE[current_color]);
-                if(x==shape_x1&&y==shape_y1) break; int e2=2*err; if(e2>-dy){err-=dy;x+=sx;} if(e2<dx){err+=dx;y+=sy;} }
+            for(;;){
+                C2D_DrawRectSolid(CANVAS_X+x*PIXEL_SIZE,CANVAS_Y+y*PIXEL_SIZE,0,PIXEL_SIZE,PIXEL_SIZE,PALETTE[current_color]);
+                if(x==shape_x1&&y==shape_y1) break;
+                int e2=2*err;
+                if(e2>-dy){err-=dy;x+=sx;}
+                if(e2<dx){err+=dx;y+=sy;}
+            }
         } else {
             int xa=shape_x0<shape_x1?shape_x0:shape_x1,xb=shape_x0<shape_x1?shape_x1:shape_x0;
             int ya=shape_y0<shape_y1?shape_y0:shape_y1,yb=shape_y0<shape_y1?shape_y1:shape_y0;
