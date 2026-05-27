@@ -17,8 +17,8 @@
 #define PALETTE_SIZE  16
 #define TRANSPARENT   0xFF
 #define MAX_LAYERS     4
-#define MAX_FRAMES     8
-#define MAX_HISTORY   24
+#define MAX_FRAMES     4
+#define MAX_HISTORY   12
 
 #define BOT_W 320
 #define BOT_H 240
