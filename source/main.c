@@ -5,6 +5,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <time.h>
+#include "color_theory.h"
 
 // ---------- Canvas / capacity (dynamic) ----------
 #define MAX_CW         48
@@ -68,10 +69,11 @@ static int current_palette_idx = 0;
 // ---------- Tools ----------
 typedef enum {
     TOOL_PENCIL, TOOL_ERASER, TOOL_FILL, TOOL_PICKER, TOOL_LINE, TOOL_RECT,
+    TOOL_SHADE, TOOL_LIGHT, TOOL_OUTLINE,
     NUM_TOOLS
 } Tool;
-static const char *TOOL_NAMES[NUM_TOOLS]  = {"Pencil","Eraser","Fill","Pick","Line","Rect"};
-static const char *TOOL_GLYPHS[NUM_TOOLS] = {"PN","ER","FL","PK","LN","RC"};
+static const char *TOOL_NAMES[NUM_TOOLS]  = {"Pencil","Eraser","Fill","Pick","Line","Rect","Shade","Light","Outline"};
+static const char *TOOL_GLYPHS[NUM_TOOLS] = {"PN","ER","FL","PK","LN","RC","SH","LT","OL"};
 
 // ---------- Data model ----------
 typedef struct { u8 pixels[MAX_CH][MAX_CW]; } Frame;
@@ -144,6 +146,107 @@ static u8 composite_at(int fi,int x,int y){
         if(v!=TRANSPARENT) r=v;
     }
     return r;
+}
+
+// ---------- Color theory glue ----------
+// The const PALETTES[] are stored as ABGR8888 (citro2d). The color_theory
+// module works in 0xRRGGBB. These helpers bridge the two and snap any
+// computed color back to the nearest entry in the active palette, since
+// the palette here is fixed and not growable.
+static inline u32 abgr_to_rgb_hex(u32 abgr) {
+    u8 r =  abgr        & 0xFF;
+    u8 g = (abgr >> 8)  & 0xFF;
+    u8 b = (abgr >> 16) & 0xFF;
+    return ((u32)r << 16) | ((u32)g << 8) | b;
+}
+
+static u8 snap_to_palette(u32 target_rgb_hex) {
+    int tr = (target_rgb_hex >> 16) & 0xFF;
+    int tg = (target_rgb_hex >> 8)  & 0xFF;
+    int tb =  target_rgb_hex        & 0xFF;
+    int best = 0, best_d = 0x7FFFFFFF;
+    for (int i = 0; i < PALETTE_SIZE; i++) {
+        u32 p = PAL(i);
+        int pr =  p        & 0xFF;
+        int pg = (p >> 8)  & 0xFF;
+        int pb = (p >> 16) & 0xFF;
+        int dr = tr - pr, dg = tg - pg, db = tb - pb;
+        int d  = dr*dr + dg*dg + db*db;
+        if (d < best_d) { best_d = d; best = i; }
+    }
+    return (u8)best;
+}
+
+// Shade a single cell, reading the BASE value from the pre-stroke snapshot
+// so dragging across the same cell repeatedly doesn't accumulate steps.
+static void smart_shade_cell(int x, int y) {
+    if (x<0||x>=proj.cw||y<0||y>=proj.ch) return;
+    u8 idx = pre_stroke.layers[proj.current_layer]
+                       .frames[proj.current_frame]
+                       .pixels[y][x];
+    if (idx == TRANSPARENT) return;
+    u32 cur = abgr_to_rgb_hex(PAL(idx));
+    u32 shaded = ct_shade_once(cur, 1.0f);
+    set_pixel(x, y, snap_to_palette(shaded));
+}
+static void smart_light_cell(int x, int y) {
+    if (x<0||x>=proj.cw||y<0||y>=proj.ch) return;
+    u8 idx = pre_stroke.layers[proj.current_layer]
+                       .frames[proj.current_frame]
+                       .pixels[y][x];
+    if (idx == TRANSPARENT) return;
+    u32 cur = abgr_to_rgb_hex(PAL(idx));
+    u32 lit = ct_highlight_once(cur, 1.0f);
+    set_pixel(x, y, snap_to_palette(lit));
+}
+
+// Walk a Bresenham line between two cells and call fn on each.
+static void smart_walk(int x0,int y0,int x1,int y1, void(*fn)(int,int)){
+    int dx=abs(x1-x0),dy=abs(y1-y0),sx=x0<x1?1:-1,sy=y0<y1?1:-1;
+    int err=dx-dy,x=x0,y=y0;
+    for(;;){
+        fn(x,y);
+        if(x==x1&&y==y1) break;
+        int e2=2*err;
+        if(e2>-dy){err-=dy;x+=sx;}
+        if(e2<dx){err+=dx;y+=sy;}
+    }
+}
+
+// Auto-outline: each transparent cell adjacent to a colored cell becomes
+// the shaded version of its darkest colored neighbor, snapped to palette.
+static void apply_auto_outline(void){
+    Frame *f = cur_frame();
+    static u8 snap[MAX_CH][MAX_CW];
+    for(int y=0;y<proj.ch;y++)
+        for(int x=0;x<proj.cw;x++)
+            snap[y][x] = f->pixels[y][x];
+    static const int DX[4]={-1,1,0,0};
+    static const int DY[4]={0,0,-1,1};
+    for(int y=0;y<proj.ch;y++){
+        for(int x=0;x<proj.cw;x++){
+            if(snap[y][x] != TRANSPARENT) continue;
+            u32 darkest_rgb = 0;
+            float darkest_l = 1000.0f;
+            bool found = false;
+            for(int k=0;k<4;k++){
+                int nx=x+DX[k], ny=y+DY[k];
+                if(nx<0||ny<0||nx>=proj.cw||ny>=proj.ch) continue;
+                u8 ni = snap[ny][nx];
+                if(ni == TRANSPARENT) continue;
+                u32 rgb = abgr_to_rgb_hex(PAL(ni));
+                HSL hsl = ct_rgb_to_hsl(ct_hex_to_rgb(rgb));
+                if(!found || hsl.l < darkest_l){
+                    darkest_l = hsl.l;
+                    darkest_rgb = rgb;
+                    found = true;
+                }
+            }
+            if(!found) continue;
+            u32 outline = ct_shade_once(darkest_rgb, 1.6f);
+            f->pixels[y][x] = snap_to_palette(outline);
+        }
+    }
 }
 
 // ---------- History ----------
@@ -342,7 +445,11 @@ static void do_quick_load(void){ flash(load_native(SAVE_DIR "/latest.pxf")?"Load
 
 // ---------- Hit regions (edit screen) ----------
 typedef struct { int x,y,w,h; } Rect;
-static const Rect TR[NUM_TOOLS]={{4,2,30,24},{36,2,30,24},{4,28,30,24},{36,28,30,24},{4,54,30,24},{36,54,30,24}};
+static const Rect TR[NUM_TOOLS]={
+    {4,2,20,24},{26,2,20,24},{48,2,20,24},
+    {4,28,20,24},{26,28,20,24},{48,28,20,24},
+    {4,54,20,24},{26,54,20,24},{48,54,20,24}
+};
 static const Rect LP={4,84,14,14},LL={20,84,28,14},LN={50,84,14,14};
 static const Rect LA={4,100,28,18},LV={34,100,14,18},LD={50,100,14,18};
 static const Rect FP={4,122,14,14},FL_={20,122,28,14},FN={50,122,14,14};
@@ -411,6 +518,17 @@ static void apply_at_pixel(int px,int py,bool start){
             break;
         case TOOL_LINE: case TOOL_RECT:
             if(start){shape_x0=px;shape_y0=py;} shape_x1=px; shape_y1=py; break;
+        case TOOL_SHADE:
+            if(start){ smart_shade_cell(px,py); }
+            else if(last_px!=px||last_py!=py){ smart_walk(last_px,last_py,px,py,smart_shade_cell); }
+            drawing=true; break;
+        case TOOL_LIGHT:
+            if(start){ smart_light_cell(px,py); }
+            else if(last_px!=px||last_py!=py){ smart_walk(last_px,last_py,px,py,smart_light_cell); }
+            drawing=true; break;
+        case TOOL_OUTLINE:
+            if(start){ push_history(&proj); apply_auto_outline(); }
+            break;
         default: break;
     }
     last_px=px; last_py=py; cursor_x=px; cursor_y=py;
@@ -591,7 +709,7 @@ static void render_bottom_edit(void){
       draw_button(&LV,v?"V":"v",v?C(0x22,0x55,0x66):C(0x55,0x33,0x22),C(0xE0,0xF0,0xFF),0.6f); }
     draw_button(&LD,"X",C(0x55,0x22,0x22),C(0xFF,0xC0,0xC0),0.6f);
     draw_button(&FP,"<",C(0x2A,0x2A,0x2F),C(0xC0,0xC0,0xC8),0.5f);
-    { char b[8]; snprintf(b,8,"F%d/%d",proj.current_frame+1,proj.num_frames);
+    { char b[16]; snprintf(b,16,"F%d/%d",proj.current_frame+1,proj.num_frames);
       draw_button(&FL_,b,C(0x33,0x33,0x44),C(0xE0,0xE0,0xFF),0.4f); }
     draw_button(&FN,">",C(0x2A,0x2A,0x2F),C(0xC0,0xC0,0xC8),0.5f);
     draw_button(&FA,"+F",C(0x22,0x55,0x33),C(0xC0,0xFF,0xC8),0.5f);
@@ -694,6 +812,32 @@ static void render_top_edit(void){
           }
       } }
 
+    // ---- Smart ramp (color theory) ----
+    { int rx=8, ry=118, sw=28, sh=22, sg=3;
+      draw_text("SMART RAMP",rx,ry-12,0.4f,C(0x80,0x80,0x90));
+      u32 base_rgb = abgr_to_rgb_hex(PAL(current_color));
+      u32 ramp[5]; ct_build_ramp(base_rgb, ramp);
+      for(int i=0;i<5;i++){
+          int sx_ = rx + i*(sw+sg);
+          u32 col = ct_c2d_color(ramp[i]);
+          C2D_DrawRectSolid(sx_,ry,0,sw,sh,col);
+          if(i==2){ // BASE highlighted with amber border
+              u32 b=C(0xFF,0xC0,0x40);
+              C2D_DrawRectSolid(sx_-1,ry-1,0,sw+2,1,b);
+              C2D_DrawRectSolid(sx_-1,ry+sh,0,sw+2,1,b);
+              C2D_DrawRectSolid(sx_-1,ry,0,1,sh,b);
+              C2D_DrawRectSolid(sx_+sw,ry,0,1,sh,b);
+          }
+          // Show snap-target index below each non-base swatch
+          if(i!=2){
+              u8 si = snap_to_palette(ramp[i]);
+              char tb[8]; snprintf(tb,8,">%d",si);
+              draw_text(tb,sx_+4,ry+sh+1,0.35f,C(0x90,0x90,0x98));
+          } else {
+              draw_text("BASE",sx_+2,ry+sh+1,0.35f,C(0xFF,0xC0,0x40));
+          }
+      } }
+
     int p4x=180,p4y=24, pf=playing?playback_frame:proj.current_frame;
     int p4s = 128 / proj.cw; if(p4s<1) p4s=1;
     draw_composite(p4x,p4y,(float)p4s,pf);
@@ -750,7 +894,7 @@ static void render_top_edit(void){
       draw_text(b,8,sy+18,0.4f,C(0xA0,0xA0,0xA8));
       draw_text("Stylus paints  DPad cursor  A paint  B erase  X undo  Y redo",8,sy+34,0.4f,C(0x70,0x70,0x78));
       draw_text("L/R color  ZL/ZR palette  SELECT+DPad layer/frame  START quit",8,sy+46,0.4f,C(0x70,0x70,0x78));
-      draw_text("SET button = settings/canvas size",8,sy+58,0.4f,C(0x70,0x70,0x78)); }
+      draw_text("SH/LT tap pixel to shade/light  OL taps once = outline whole canvas",8,sy+58,0.4f,C(0x70,0x70,0x78)); }
 
     if(now_ms()<flash_until&&flash_msg[0]){
         float w=(float)strlen(flash_msg)*8.0f+16; float x=(TOP_W-w)/2;
