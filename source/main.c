@@ -16,6 +16,7 @@
 
 #define PALETTE_SIZE   16
 #define TRANSPARENT    0xFF
+#define MAX_DRAG_JUMP  8
 
 #define BOT_W 320
 #define BOT_H 240
@@ -503,11 +504,11 @@ static void apply_at_pixel(int px,int py,bool start){
     if(start) pre_stroke=proj;
     switch(current_tool){
         case TOOL_PENCIL:
-            if(start) set_pixel(px,py,current_color);
+            if(start || last_px<0) set_pixel(px,py,current_color);
             else if(last_px!=px||last_py!=py) draw_line_px(last_px,last_py,px,py,current_color);
             drawing=true; break;
         case TOOL_ERASER:
-            if(start) set_pixel(px,py,TRANSPARENT);
+            if(start || last_px<0) set_pixel(px,py,TRANSPARENT);
             else if(last_px!=px||last_py!=py) draw_line_px(last_px,last_py,px,py,TRANSPARENT);
             drawing=true; break;
         case TOOL_FILL:
@@ -519,11 +520,11 @@ static void apply_at_pixel(int px,int py,bool start){
         case TOOL_LINE: case TOOL_RECT:
             if(start){shape_x0=px;shape_y0=py;} shape_x1=px; shape_y1=py; break;
         case TOOL_SHADE:
-            if(start){ smart_shade_cell(px,py); }
+            if(start || last_px<0){ smart_shade_cell(px,py); }
             else if(last_px!=px||last_py!=py){ smart_walk(last_px,last_py,px,py,smart_shade_cell); }
             drawing=true; break;
         case TOOL_LIGHT:
-            if(start){ smart_light_cell(px,py); }
+            if(start || last_px<0){ smart_light_cell(px,py); }
             else if(last_px!=px||last_py!=py){ smart_walk(last_px,last_py,px,py,smart_light_cell); }
             drawing=true; break;
         case TOOL_OUTLINE:
@@ -666,7 +667,21 @@ static void handle_touch_edit(u32 kHeld,touchPosition t){
             done: ;
         }
     } else if(now_t&&was_touching){
-        if(hit(&CR,t.px,t.py)) apply_at_pixel((t.px-CANVAS_X)/PIXEL_SIZE,(t.py-CANVAS_Y)/PIXEL_SIZE,false);
+        if(hit(&CR,t.px,t.py)) {
+            int new_px=(t.px-CANVAS_X)/PIXEL_SIZE, new_py=(t.py-CANVAS_Y)/PIXEL_SIZE;
+            // Stylus glitch / off-canvas excursion guard: if the new sample is
+            // wildly far from the last applied one, break line-interp tracking
+            // so the next paint is a single dot at the new position instead of
+            // a Bresenham streak across the gap.
+            if(last_px>=0 && (abs(new_px-last_px)>MAX_DRAG_JUMP || abs(new_py-last_py)>MAX_DRAG_JUMP)){
+                last_px=-1; last_py=-1;
+            }
+            apply_at_pixel(new_px,new_py,false);
+        } else {
+            // Stylus is touching but off the canvas — break line-interp so a
+            // return to canvas at a different position doesn't streak.
+            last_px=-1; last_py=-1;
+        }
     } else if(!now_t&&was_touching){ end_stroke(); }
     was_touching=now_t;
 }
