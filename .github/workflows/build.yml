@@ -15,6 +15,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build
+        shell: bash
         run: |
           source /etc/profile.d/devkit-env.sh
           cp $DEVKITPRO/libctru/default_icon.png app.png
@@ -25,4 +26,5 @@ jobs:
         with:
           name: pixelforge
           path: |
-            pixelforge.
+            pixelforge.3dsx
+            pixelforge.smdh
