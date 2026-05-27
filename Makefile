@@ -1,9 +1,9 @@
-ifeq ($(strip $(DEVKITPRO)),)
-$(error "Please set DEVKITPRO in your environment")
+ifeq ($(strip $(DEVKITARM)),)
+$(error "Please set DEVKITARM in your environment")
 endif
 
 TOPDIR ?= $(CURDIR)
-include $(DEVKITPRO)/devkitarm-rules
+include $(DEVKITARM)/3ds_rules
 
 TARGET      := pixelforge
 BUILD       := build
@@ -16,12 +16,12 @@ APP_AUTHOR      := you
 
 ARCH    := -march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft
 CFLAGS  := -g -Wall -O2 -mword-relocations -ffunction-sections $(ARCH)
-CFLAGS  += $(INCLUDE) -D__3DS__ -DARM11
+CFLAGS  += $(INCLUDE) -D__3DS__
 ASFLAGS := -g $(ARCH)
 LDFLAGS  = -specs=3dsx.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map)
 
 LIBS    := -lcitro2d -lcitro3d -lctru -lm
-LIBDIRS := $(DEVKITPRO)/libctru $(DEVKITPRO)/portlibs/3ds
+LIBDIRS := $(CTRULIB) $(PORTLIBS)
 
 ifneq ($(BUILD),$(notdir $(CURDIR)))
 
